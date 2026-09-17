@@ -1,90 +1,85 @@
-"""
-Main script: run baselines, train Q-Learning, quick DQN & PPO demos, evaluate.
-"""
+"""Improved main: baselines + training with metrics and learning curves."""
 
 from __future__ import annotations
-import numpy as np
 from pathlib import Path
+import numpy as np
 
 from src.env.energy_env import EnergyManagementEnv
 from src.agents.baseline import RandomAgent, RuleBasedAgent
 from src.agents.q_learning import QLearningAgent
 from src.agents.dqn import DQNAgent
 from src.agents.ppo import PPOAgent
+from src.utils.metrics import evaluate_agent, summarize
+from src.utils.plotting import plot_learning_curve
+
+RESULTS = Path("results")
+RESULTS.mkdir(exist_ok=True)
 
 
-def evaluate(agent, env, n_episodes: int = 10, name: str = "Agent"):
-    costs = []
-    for ep in range(n_episodes):
-        obs, _ = env.reset(seed=100 + ep)
-        done = False
-        total_reward = 0.0
-        while not done:
-            if hasattr(agent, "act"):
-                if isinstance(agent, PPOAgent):
-                    action, _, _ = agent.act(obs)
-                else:
-                    action = agent.act(obs, explore=False) if hasattr(agent, "epsilon") else agent.act(obs)
-            else:
-                action = agent.act(obs)
-            obs, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
-            total_reward += reward
-        costs.append(env.total_cost)
-    mean_cost = np.mean(costs)
-    print(f"{name:20s} | Mean cost over {n_episodes} eps: {mean_cost:.3f} $")
-    return mean_cost
-
-
-def train_q_learning(env, episodes: int = 500):
+def train_q_learning(env, episodes: int = 600):
     agent = QLearningAgent()
+    returns = []
     for ep in range(episodes):
         obs, _ = env.reset()
         done = False
+        ep_ret = 0.0
         while not done:
             action = agent.act(obs)
             next_obs, reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
             agent.update(obs, action, reward, next_obs, done)
             obs = next_obs
+            ep_ret += reward
         agent.decay_epsilon()
+        returns.append(ep_ret)
         if (ep + 1) % 100 == 0:
-            print(f"Q-Learning episode {ep+1}, epsilon={agent.epsilon:.3f}")
+            print(f"  Q-Learning ep {ep+1:4d} | ε={agent.epsilon:.3f} | return={ep_ret:.2f}")
+    plot_learning_curve(returns, "Q-Learning", RESULTS / "q_learning_curve.png")
     return agent
 
 
-def train_dqn(env, episodes: int = 300):
+def train_dqn(env, episodes: int = 350):
     agent = DQNAgent()
+    returns = []
     for ep in range(episodes):
         obs, _ = env.reset()
         done = False
+        ep_ret = 0.0
         while not done:
             action = agent.act(obs)
             next_obs, reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
-            agent.remember(obs, action, reward, next_obs, done)
+            agent.remember(obs, action, reward, next_obs, float(done))
             agent.update()
             obs = next_obs
+            ep_ret += reward
         agent.decay_epsilon()
+        returns.append(ep_ret)
         if (ep + 1) % 50 == 0:
-            print(f"DQN episode {ep+1}, epsilon={agent.epsilon:.3f}")
+            print(f"  DQN ep {ep+1:4d} | ε={agent.epsilon:.3f} | return={ep_ret:.2f}")
+    plot_learning_curve(returns, "DQN", RESULTS / "dqn_curve.png")
     return agent
 
 
-def train_ppo(env, episodes: int = 200):
+def train_ppo(env, episodes: int = 250):
     agent = PPOAgent()
+    returns = []
     for ep in range(episodes):
         obs, _ = env.reset()
         done = False
+        ep_ret = 0.0
         while not done:
             action, log_prob, value = agent.act(obs)
             next_obs, reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
             agent.store(obs, action, log_prob, reward, done, value)
             obs = next_obs
+            ep_ret += reward
         agent.update()
+        returns.append(ep_ret)
         if (ep + 1) % 50 == 0:
-            print(f"PPO episode {ep+1}")
+            print(f"  PPO ep {ep+1:4d} | return={ep_ret:.2f}")
+    plot_learning_curve(returns, "PPO", RESULTS / "ppo_curve.png")
     return agent
 
 
@@ -92,22 +87,22 @@ def main():
     env = EnergyManagementEnv(seed=42)
 
     print("=== Baselines ===")
-    evaluate(RandomAgent(), env, name="Random")
-    evaluate(RuleBasedAgent(), env, name="Rule-Based")
+    summarize(evaluate_agent(RandomAgent(), env, n_episodes=8), "Random")
+    summarize(evaluate_agent(RuleBasedAgent(), env, n_episodes=8), "Rule-Based")
 
     print("\n=== Training Q-Learning ===")
-    q_agent = train_q_learning(env, episodes=400)
-    evaluate(q_agent, env, name="Q-Learning")
+    q_agent = train_q_learning(env)
+    summarize(evaluate_agent(q_agent, env, n_episodes=8), "Q-Learning")
 
-    print("\n=== Training DQN (short demo) ===")
-    dqn_agent = train_dqn(env, episodes=200)
-    evaluate(dqn_agent, env, name="DQN")
+    print("\n=== Training DQN ===")
+    dqn_agent = train_dqn(env)
+    summarize(evaluate_agent(dqn_agent, env, n_episodes=8), "DQN")
 
-    print("\n=== Training PPO (short demo) ===")
-    ppo_agent = train_ppo(env, episodes=150)
-    evaluate(ppo_agent, env, name="PPO")
+    print("\n=== Training PPO ===")
+    ppo_agent = train_ppo(env)
+    summarize(evaluate_agent(ppo_agent, env, n_episodes=8), "PPO")
 
-    print("\nDone. You can increase episode counts for better performance.")
+    print("\nAll done. Learning curves saved in results/")
 
 
 if __name__ == "__main__":

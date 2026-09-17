@@ -1,28 +1,26 @@
 # Reinforcement Learning for Solar + Battery Energy Management
 
-Complete project: intelligent agent that learns to control a battery in a PV + Load + Grid system.
+Intelligent agent that learns optimal charge / idle / discharge decisions for a home battery paired with solar PV.
 
 ## System
 
 ```
-PV → Battery → Load
-         ↓
-        Grid
+PV generation → Battery → Household Load
+                    ↓
+                   Grid (buy/sell)
 ```
-
-The agent decides at each step: **Charge / Idle / Discharge** (or continuous power).
 
 ## Features
 
-- Custom Gymnasium-compatible environment
-- Realistic components: PV profile, load profile, time-varying electricity price, battery efficiency & SOC limits
-- Reward designed for low cost + high self-consumption + constraint satisfaction
-- Baselines: Random & simple rule-based controller
-- Tabular Q-Learning
-- Deep Q-Network (DQN) with PyTorch
-- PPO agent
-- Evaluation metrics: electricity cost, peak grid demand, battery throughput, PV utilization, constraint violations
-- Clean modular code
+- Gymnasium-compatible environment with SOC limits, efficiencies, time-of-use prices
+- Synthetic but realistic PV / load / price profiles
+- Baselines: Random + Rule-based heuristic
+- Tabular Q-Learning with state discretization
+- DQN (PyTorch) with experience replay + target network
+- PPO (Actor-Critic)
+- Rich evaluation: cost, peak import, battery throughput, self-consumption
+- Learning-curve plots and model checkpointing
+- Configurable hyperparameters
 
 ## Quick Start
 
@@ -33,31 +31,22 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run baselines + tabular Q-Learning demo
 python -m src.main
 ```
 
-## Project Structure
+## Key Metrics Reported
+
+- Mean electricity cost ($)
+- Peak grid import (kW)
+- Battery throughput (kWh) – proxy for cycling
+- PV self-consumption ratio
+
+## Structure
 
 ```
 src/
-├── env/
-│   ├── energy_env.py          # Main environment
-│   └── profiles.py            # PV, load, price profiles
-├── agents/
-│   ├── baseline.py
-│   ├── q_learning.py
-│   ├── dqn.py
-│   └── ppo.py
-├── training/
-├── evaluation/
+├── env/           # EnergyManagementEnv + profiles
+├── agents/        # baselines, Q-Learning, DQN, PPO
+├── utils/         # metrics, plotting, checkpointing
 └── main.py
 ```
-
-## MDP Formulation (summary)
-
-**State:** `[SOC, PV, Load, Price, Hour]`  
-**Actions:** 0 = Charge, 1 = Idle, 2 = Discharge  
-**Reward:** `-cost + bonuses - penalties`
-
-See `docs/` for full mathematical description.
