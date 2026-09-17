@@ -80,18 +80,21 @@ class EnergyManagementEnv(gym.Env):
         return self._get_obs(), {}
 
     def _get_obs(self):
+        # Safe index: when episode is over, return last valid observation
+        t = min(self.t, self.episode_hours - 1)
         return np.array([
             self.soc,
-            self.pv[self.t],
-            self.load[self.t],
-            self.price[self.t],
-            self.t / self.episode_hours,
+            self.pv[t],
+            self.load[t],
+            self.price[t],
+            t / self.episode_hours,
         ], dtype=np.float32)
 
     def step(self, action: int):
-        pv = self.pv[self.t]
-        load = self.load[self.t]
-        price = self.price[self.t]
+        t = min(self.t, self.episode_hours - 1)
+        pv = self.pv[t]
+        load = self.load[t]
+        price = self.price[t]
 
         # Desired battery power (positive = charge)
         if action == 0:      # charge
@@ -118,13 +121,11 @@ class EnergyManagementEnv(gym.Env):
         self.battery_throughput += abs(energy_to_batt)
 
         # Power balance
-        # PV can cover load and charge battery; residual goes to/from grid
         net = load + p_batt - pv          # positive = need from grid
         grid_import = max(net, 0.0)
         grid_export = max(-net, 0.0)
 
         cost = grid_import * price * self.dt
-        # Optional small reward for export (feed-in tariff lower)
         revenue = grid_export * price * 0.3 * self.dt
         step_cost = cost - revenue
 
@@ -132,11 +133,11 @@ class EnergyManagementEnv(gym.Env):
         self.total_grid_import += grid_import * self.dt
         self.total_pv_used += min(pv, load + max(p_batt, 0)) * self.dt
 
-        # Reward: negative cost + small penalty for extreme SOC + bonus for using PV
+        # Reward
         reward = -step_cost
         if self.soc <= self.soc_min + 0.02 or self.soc >= self.soc_max - 0.02:
             reward -= 0.05
-        reward += 0.01 * min(pv, load)   # encourage self-consumption
+        reward += 0.01 * min(pv, load)
 
         self.t += 1
         terminated = self.t >= self.episode_hours
